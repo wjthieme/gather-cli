@@ -45,6 +45,7 @@ If you want to switch spaces later, re-run `yarn start login <spaceUrl>` or edit
 
 ## Notes / requirements
 
+- This uses a **non-public / reverse‑engineered** Gather API. **There is no guarantee this CLI will keep working**. Gather may change the API at any time.
 - **Apple Music integration** (`music`) uses AppleScript (`osascript`), so it’s intended for **macOS**.
 - The CLI uses Gather v2’s Firebase-backed auth and refreshes JWTs via Google’s securetoken endpoint.
 
