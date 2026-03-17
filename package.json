@@ -1,0 +1,32 @@
+{
+  "name": "gather-cli",
+  "version": "0.0.0",
+  "main": "dist/index.js",
+  "license": "MIT",
+  "packageManager": "yarn@4.13.0",
+  "type": "module",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "bin": {
+    "gather": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --sourcemap",
+    "start": "tsx src/index.ts",
+    "dev": "DEBUG=1 tsx src/index.ts",
+    "prepublishOnly": "yarn build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsup": "^8.5.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "^3.0.0",
+    "ws": "^8.18.0"
+  }
+}
