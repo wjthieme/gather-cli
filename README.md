@@ -23,13 +23,7 @@ yarn start --help
 Login first (stores credentials in `.auth`):
 
 ```bash
-yarn start login
-```
-
-Optionally pass a space URL (or a raw space UUID) so subsequent commands don’t need arguments:
-
-```bash
-yarn start login "https://app.v2.gather.town/app/your-space-slug-<space-uuid>"
+yarn start login <space-id>
 ```
 
 Then run any command:
@@ -45,7 +39,7 @@ yarn start spin
 This project stores auth in a plain-text file at **`.auth`** (in your current working directory):
 
 - **line 1**: Firebase **refresh token**
-- **line 2** (optional): Gather **spaceId** (UUID)
+- **line 2**: Gather **spaceId** (UUID)
 
 If you want to switch spaces later, re-run `yarn start login <spaceUrl>` or edit line 2.
 
@@ -56,10 +50,10 @@ If you want to switch spaces later, re-run `yarn start login <spaceUrl>` or edit
 
 ## Debugging
 
-Run with `DEBUG=1` to log token refresh, WebSocket connect/auth/subscription, and server messages:
+Run with debug logging to inspect token refresh, WebSocket connect/auth/subscription, and server messages:
 
 ```bash
-DEBUG=1 yarn start music
+yarn dev <command>
 ```
 
 ## Build
