@@ -6,6 +6,8 @@ import { getValidJwt } from "./auth.js";
 import { GATHER_WS_URL } from "./config.js";
 import { debug, DEBUG } from "./debug.js";
 
+const DRY_RUN = process.env.DRY === "1";
+
 /** Shorten long IDs for readable command logs. */
 function shortId(id: string, max = 8): string {
   return id.length > max ? id.slice(0, max) + "…" : id;
@@ -19,6 +21,18 @@ export function printWsCommand(name: string, ...args: unknown[]): void {
   console.log(`${name}(${parts.join(", ")})`);
 }
 
+function sendEncoded(ws: WebSocket, payload: unknown): void {
+  if (DRY_RUN) {
+    const kind =
+      payload && typeof payload === "object" && "type" in (payload as Record<string, unknown>)
+        ? String((payload as Record<string, unknown>).type)
+        : "unknown";
+    debug("ws: DRY=1 skipping send", kind);
+    return;
+  }
+  ws.send(encode(payload));
+}
+
 export function buildWsUrl(spaceId: string, authUserId: string): string {
   const u = new URL(GATHER_WS_URL);
   u.searchParams.set("spaceId", spaceId);
@@ -28,7 +42,7 @@ export function buildWsUrl(spaceId: string, authUserId: string): string {
 
 /** HAR: key is "credential" (singular), not "credentials". */
 export function sendAuthenticate(ws: WebSocket, jwt: string): void {
-  ws.send(encode({ type: "Authenticate", credential: { type: "JWT", jwt } }));
+  sendEncoded(ws, { type: "Authenticate", credential: { type: "JWT", jwt } });
 }
 
 /** HAR: connectionData is { type: 4, data: {} }, not raw bytes. */
@@ -36,19 +50,19 @@ export function connectAndSubscribe(ws: WebSocket, jwt: string, spaceId: string)
   debug("ws: sending Authenticate (JWT length:", jwt.length, ")");
   sendAuthenticate(ws, jwt);
   debug("ws: sending ConnectToSpace", spaceId.slice(0, 8) + "...");
-  ws.send(encode({
+  sendEncoded(ws, {
     type: "ConnectToSpace",
     spaceId,
     connectionData: { type: 4, data: {} },
-  }));
+  });
   debug("ws: sending Subscribe");
-  ws.send(encode({ type: "Subscribe" }));
+  sendEncoded(ws, { type: "Subscribe" });
 }
 
 /** HAR: browser sends loadSpaceUser then enterSpace before setCustomStatus. */
 export function sendLoadSpaceUser(ws: WebSocket): void {
   const txnId = randomUUID();
-  ws.send(encode({
+  sendEncoded(ws, {
     type: "Action",
     txnId,
     action: "loadSpaceUser",
@@ -61,19 +75,19 @@ export function sendLoadSpaceUser(ws: WebSocket): void {
         spawnAreaId: { type: 4, data: {} },
       },
     ],
-  }));
+  });
   debug("ws: sent loadSpaceUser");
 }
 
 /** HAR: enterSpace with args ["SpaceUser", spaceUserId] – required before setCustomStatus. */
 export function sendEnterSpace(ws: WebSocket, spaceUserId: string): void {
   const txnId = randomUUID();
-  ws.send(encode({
+  sendEncoded(ws, {
     type: "Action",
     txnId,
     action: "enterSpace",
     args: ["SpaceUser", spaceUserId],
-  }));
+  });
   debug("ws: sent enterSpace");
 }
 
@@ -92,7 +106,7 @@ export function sendSetCustomStatus(
   ];
   printWsCommand("status", spaceUserId, text, emoji);
   debug("send setCustomStatus", { text, emoji, txnId: txnId.slice(0, 8) });
-  ws.send(encode({ type: "Action", txnId, action: "setCustomStatus", args }));
+  sendEncoded(ws, { type: "Action", txnId, action: "setCustomStatus", args });
   return txnId;
 }
 
@@ -102,7 +116,7 @@ export function sendClearStatus(ws: WebSocket, spaceUserId: string): string {
   const args = ["SpaceUser", spaceUserId];
   printWsCommand("clearStatus", spaceUserId);
   debug("send clearCustomStatus", { txnId: txnId.slice(0, 8) });
-  ws.send(encode({ type: "Action", txnId, action: "clearCustomStatus", args }));
+  sendEncoded(ws, { type: "Action", txnId, action: "clearCustomStatus", args });
   return txnId;
 }
 
@@ -120,7 +134,7 @@ export function sendFaceDirection(
   const args = ["SpaceUser", spaceUserId, direction];
   printWsCommand("faceDirection", spaceUserId, direction);
   debug("send faceDirection", { direction, txnId: txnId.slice(0, 8) });
-  ws.send(encode({ type: "Action", txnId, action: "faceDirection", args }));
+  sendEncoded(ws, { type: "Action", txnId, action: "faceDirection", args });
   return txnId;
 }
 
@@ -135,7 +149,7 @@ export function sendMove(
   const args = ["SpaceUser", spaceUserId, { direction }];
   printWsCommand("move", spaceUserId, direction);
   debug("send move", { direction, txnId: txnId.slice(0, 8) });
-  ws.send(encode({ type: "Action", txnId, action: "move", args }));
+  sendEncoded(ws, { type: "Action", txnId, action: "move", args });
   return txnId;
 }
 
@@ -145,7 +159,7 @@ export function sendDrive(ws: WebSocket, spaceUserId: string): string {
   const args = ["SpaceUser", spaceUserId];
   printWsCommand("drive", spaceUserId);
   debug("send drive", { txnId: txnId.slice(0, 8) });
-  ws.send(encode({ type: "Action", txnId, action: "drive", args }));
+  sendEncoded(ws, { type: "Action", txnId, action: "drive", args });
   return txnId;
 }
 
@@ -163,7 +177,62 @@ export function sendBroadcastEmote(
   ];
   printWsCommand("emote", spaceUserId, emote);
   debug("send broadcastEmote", { emote, txnId: txnId.slice(0, 8) });
-  ws.send(encode({ type: "Action", txnId, action: "broadcastEmote", args }));
+  sendEncoded(ws, { type: "Action", txnId, action: "broadcastEmote", args });
+  return txnId;
+}
+
+/** Nearby chat typing (chat.har): broadcastTransientTyping with isTyping + ambient list. */
+export function sendBroadcastTransientTyping(
+  ws: WebSocket,
+  spaceUserId: string,
+  isTyping: boolean
+): string {
+  const txnId = randomUUID();
+  const args = [
+    "SpaceUser",
+    spaceUserId,
+    { isTyping, ambientlyConnectedUserIds: [spaceUserId] },
+  ];
+  printWsCommand("typing", spaceUserId, isTyping);
+  debug("send broadcastTransientTyping", { isTyping, txnId: txnId.slice(0, 8) });
+  sendEncoded(ws, { type: "Action", txnId, action: "broadcastTransientTyping", args });
+  return txnId;
+}
+
+/** Nearby chat message (chat.har): broadcastMessage with ProseMirror doc payload. */
+export function sendBroadcastMessage(
+  ws: WebSocket,
+  spaceUserId: string,
+  text: string,
+  ambientlyConnectedUserIds?: string[]
+): string {
+  const txnId = randomUUID();
+  const safeText = text.trim();
+  const ambient = Array.isArray(ambientlyConnectedUserIds) ? ambientlyConnectedUserIds : [];
+  const ambientList = ambient.length > 0 ? ambient : [spaceUserId];
+  const args = [
+    "SpaceUser",
+    spaceUserId,
+    {
+      message: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: safeText }],
+          },
+        ],
+      },
+      ambientlyConnectedUserIds: ambientList,
+    },
+  ];
+  printWsCommand("nearbyChat", spaceUserId, safeText);
+  debug("send broadcastMessage", {
+    text: safeText.slice(0, 80),
+    recipients: ambientList.length,
+    txnId: txnId.slice(0, 8),
+  });
+  sendEncoded(ws, { type: "Action", txnId, action: "broadcastMessage", args });
   return txnId;
 }
 
@@ -176,7 +245,8 @@ const WAIT_FOR_FIRST_MSG_MS = 10000;
  */
 export function createGatherConnection(
   creds: GatherCredentials,
-  onClose?: (code: number, reason?: Buffer) => void
+  onClose?: (code: number, reason?: Buffer) => void,
+  onKnownSpaceUserIds?: (ids: string[]) => void
 ): Promise<WebSocket> {
   return new Promise(async (resolve, reject) => {
     const jwt = await getValidJwt(creds);
@@ -203,6 +273,22 @@ export function createGatherConnection(
     }, WAIT_FOR_FIRST_MSG_MS);
 
     let hasEnteredSpace = false;
+    const knownSpaceUserIds = new Set<string>();
+
+    const collectSpaceUserIdsFromPatches = (patches: unknown[], replace = false): void => {
+      if (replace) knownSpaceUserIds.clear();
+      for (const patch of patches) {
+        if (!patch || typeof patch !== "object") continue;
+        const p = patch as { model?: unknown; data?: unknown };
+        if (p.model !== "SpaceUser" || !p.data || typeof p.data !== "object") continue;
+        const id = (p.data as { id?: unknown }).id;
+        if (typeof id === "string" && id.trim().length > 0) {
+          knownSpaceUserIds.add(id);
+        }
+      }
+      onKnownSpaceUserIds?.([...knownSpaceUserIds]);
+    };
+
     socket.on("open", () => {
       debug("ws: open");
       connectAndSubscribe(socket, jwt, spaceId);
@@ -222,7 +308,7 @@ export function createGatherConnection(
     socket.on("message", (data: Buffer | ArrayBuffer) => {
       try {
         const buf = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data as Buffer);
-        const msg = decode(buf) as { type?: string; actionReturns?: unknown[]; error?: string };
+        const msg = decode(buf) as any;
         const msgType = msg?.type;
         if (DEBUG && msgType && msgType !== "Heartbeat") {
           const preview = JSON.stringify(msg).slice(0, 200);
@@ -230,6 +316,14 @@ export function createGatherConnection(
           if (msg.actionReturns?.length) debug("ws: actionReturns", JSON.stringify(msg.actionReturns).slice(0, 300));
           if (msg.error) debug("ws: error from server", msg.error);
         }
+
+        // Track all known users from state snapshots/patches.
+        if (msgType === "FullStateChunk" && Array.isArray(msg.fullStatePatches)) {
+          collectSpaceUserIdsFromPatches(msg.fullStatePatches, true);
+        } else if (msgType === "DeltaState" && Array.isArray(msg.patches)) {
+          collectSpaceUserIdsFromPatches(msg.patches);
+        }
+
         if (msgType && !hasEnteredSpace) {
           hasEnteredSpace = true;
           sendLoadSpaceUser(socket);

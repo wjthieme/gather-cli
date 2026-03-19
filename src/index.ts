@@ -3,6 +3,7 @@ import { runMusic } from "./commands/music.js";
 import { runDance } from "./commands/dance.js";
 import { runSpin } from "./commands/spin.js";
 import { runLogin } from "./commands/login.js";
+import { runLyrics } from "./commands/lyrics.js";
 
 const subcommand = process.argv[2];
 
@@ -15,6 +16,9 @@ async function main(): Promise<void> {
   switch (subcommand) {
     case "music":
       await runMusic();
+      break;
+    case "lyrics":
+      await runLyrics();
       break;
     case "dance":
       await runDance();
@@ -37,12 +41,14 @@ Usage: yarn start <command> [options]
 
 Commands:
   music             Update Gather custom status from Apple Music (every 5s)
+  lyrics            Post timed lyric lines from Apple Music to nearby chat
   dance             Move randomly and show party emoji
   spin              Spin in place (faceDirection + 🌀 emote)
   login <spaceId>   Interactive Google OAuth login (opens browser); required space ID or space URL saved to ~/.config/gather/auth.json
 
 Examples:
   ${process.argv[0]} music
+  ${process.argv[0]} lyrics
   ${process.argv[0]} dance
   ${process.argv[0]} spin
   ${process.argv[0]} login <spaceId-or-spaceUrl>

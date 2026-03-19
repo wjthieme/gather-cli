@@ -1,6 +1,6 @@
 # Gather v2 API Specification
 
-Reverse‑engineered from **chrome.har** (web app: login, space, calendar, chat, files) and **dance.har** (in-space: move, reactions, walk). All endpoints and WebSocket messages are MessagePack-encoded where noted.
+Reverse‑engineered from **chrome.har** (web app: login, space, calendar, chat, files), **dance.har** (in-space: move, reactions, walk), and **chat.har** (nearby chat typing/message actions). All endpoints and WebSocket messages are MessagePack-encoded where noted.
 
 **Base URLs:**
 - REST: `https://api.v2.gather.town`
@@ -212,6 +212,14 @@ All actions use the same envelope:
 **broadcastEmote** (dance.har) — in-space “reaction” (e.g. party emoji).
 
 - **args:** `["SpaceUser", "<spaceUserId>", { "emote": "<emoji>", "count": 1, "ambientlyConnectedUserIds": ["<spaceUserId>"] }]`
+
+**broadcastTransientTyping** (chat.har) — nearby chat typing indicator.
+
+- **args:** `["SpaceUser", "<spaceUserId>", { "isTyping": true | false, "ambientlyConnectedUserIds": ["<spaceUserId>"] }]`
+
+**broadcastMessage** (chat.har) — nearby chat message to ambiently connected users.
+
+- **args:** `["SpaceUser", "<spaceUserId>", { "message": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "<message>" }] }] }, "ambientlyConnectedUserIds": ["<spaceUserId>"] }]`
 
 **faceDirection** (dance.har)
 

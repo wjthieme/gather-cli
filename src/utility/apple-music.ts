@@ -9,43 +9,95 @@ export interface NowPlaying {
   playing: boolean;
 }
 
+export interface NowPlayingWithPosition extends NowPlaying {
+  positionSec: number;
+  durationSec: number;
+}
+
 const APPLESCRIPT = `tell application "Music"
-if player state is stopped or player state is paused then return "PAUSED|"
+if player state is stopped or player state is paused then return "STATE:PAUSED"
 try
   set t to current track
   set trackName to name of t
   set trackArtist to artist of t
+  set trackDuration to duration of t
+  set playPos to player position
   if trackName is missing value then set trackName to ""
   if trackArtist is missing value then set trackArtist to ""
-  return "PLAYING|" & trackArtist & "|" & trackName
+  if trackDuration is missing value then set trackDuration to 0
+  if playPos is missing value then set playPos to 0
+  return "STATE:PLAYING" & linefeed & "ARTIST:" & trackArtist & linefeed & "TITLE:" & trackName & linefeed & "POS:" & playPos & linefeed & "DURATION:" & trackDuration
 on error
-  return "PAUSED|"
+  return "STATE:PAUSED"
 end try
 end tell
 `;
 
-/**
- * Gets current Apple Music track and play state via AppleScript.
- * Returns null if nothing playing or paused/stopped.
- */
-export function getNowPlaying(): NowPlaying | null {
-  const tmp = path.join(tmpdir(), `music-status-${process.pid}.applescript`);
+function runAppleScript(script: string, fileTag: string): string {
+  const tmp = path.join(tmpdir(), `${fileTag}-${process.pid}.applescript`);
   try {
-    fs.writeFileSync(tmp, APPLESCRIPT, "utf8");
-    const out = execSync(`osascript "${tmp}"`, {
+    fs.writeFileSync(tmp, script, "utf8");
+    return execSync(`osascript "${tmp}"`, {
       encoding: "utf-8",
-      maxBuffer: 4096,
+      maxBuffer: 1024 * 1024,
     }).trim();
-    const [state, artist = "", title = ""] = out.split("|");
-    if (state !== "PLAYING" || (!artist && !title)) return null;
-    return { artist: artist.trim(), title: title.trim(), playing: true };
-  } catch {
-    return null;
   } finally {
     try {
       fs.unlinkSync(tmp);
     } catch {
       /* ignore */
     }
+  }
+}
+
+function parseNowPlayingOutput(out: string): NowPlayingWithPosition | null {
+  if (!out.startsWith("STATE:PLAYING")) return null;
+
+  const lines = out.split("\n");
+  const artistLine = lines.find((line) => line.startsWith("ARTIST:")) ?? "ARTIST:";
+  const titleLine = lines.find((line) => line.startsWith("TITLE:")) ?? "TITLE:";
+  const posLine = lines.find((line) => line.startsWith("POS:")) ?? "POS:0";
+  const durationLine = lines.find((line) => line.startsWith("DURATION:")) ?? "DURATION:0";
+
+  const artist = artistLine.slice("ARTIST:".length).trim();
+  const title = titleLine.slice("TITLE:".length).trim();
+  const positionSec = Number.parseFloat(posLine.slice("POS:".length).trim()) || 0;
+  const durationSec = Number.parseFloat(durationLine.slice("DURATION:".length).trim()) || 0;
+
+  if (!artist && !title) return null;
+  return {
+    artist,
+    title,
+    playing: true,
+    positionSec,
+    durationSec,
+  };
+}
+
+/**
+ * Gets current Apple Music track and play state via AppleScript.
+ * Returns null if nothing playing or paused/stopped.
+ */
+export function getNowPlaying(): NowPlaying | null {
+  try {
+    const out = runAppleScript(APPLESCRIPT, "music-status");
+    const parsed = parseNowPlayingOutput(out);
+    if (!parsed) return null;
+    return { artist: parsed.artist, title: parsed.title, playing: true };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Gets current Apple Music track with position and duration.
+ * Does not request lyrics from Apple Music.
+ */
+export function getNowPlayingWithPosition(): NowPlayingWithPosition | null {
+  try {
+    const out = runAppleScript(APPLESCRIPT, "music-position");
+    return parseNowPlayingOutput(out);
+  } catch {
+    return null;
   }
 }

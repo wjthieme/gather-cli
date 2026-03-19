@@ -5,6 +5,7 @@ A small CLI for experimenting with the **Gather v2** (reverse‑engineered) API.
 Includes:
 - **`login`**: interactive Google OAuth login (opens a browser) and stores a Firebase refresh token locally
 - **`music`**: updates your Gather custom status from **Apple Music** now playing (every 5s)
+- **`lyrics`**: posts the current lyric line to Gather nearby chat, timed to current song position
 - **`dance`**: random walk + 🎉 emote loop
 - **`spin`**: rotate (faceDirection) + 🌀 emote loop
 
@@ -30,6 +31,7 @@ Then run any command:
 
 ```bash
 yarn start music
+yarn start lyrics
 yarn start dance
 yarn start spin
 ```
@@ -55,6 +57,12 @@ Run with debug logging to inspect token refresh, WebSocket connect/auth/subscrip
 
 ```bash
 yarn dev <command>
+```
+
+Dry-run mode (prints commands but does not send any WebSocket messages):
+
+```bash
+DRY=1 yarn start lyrics
 ```
 
 ## Build
