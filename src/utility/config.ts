@@ -1,9 +1,9 @@
 import path from "node:path";
+import os from "node:os";
 
-const ROOT = path.resolve(process.cwd());
-
-/** Plain-text auth file: line 1 = refresh token, line 2 = space ID (optional, from second argument to login). */
-export const AUTH_FILE = path.join(ROOT, ".auth");
+/** JSON auth file with refreshToken and optional spaceId. */
+export const AUTH_DIR = path.join(os.homedir(), ".config", "gather");
+export const AUTH_FILE = path.join(AUTH_DIR, "auth.json");
 
 /** Extract space ID from Gather app URL (e.g. app.v2.gather.town/app/orca-d6d6a364-a19f-4e01-92c2-da74c8ecb6be). */
 const SPACE_ID_IN_URL = /[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i;

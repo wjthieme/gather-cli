@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { AUTH_FILE, FIREBASE_API_KEY, FIREBASE_TOKEN_URL } from "./config.js";
+import { AUTH_DIR, AUTH_FILE, FIREBASE_API_KEY, FIREBASE_TOKEN_URL } from "./config.js";
 import { debug } from "./debug.js";
 import { fetchMe, fetchSpaceUserId } from "./gather-api.js";
 
@@ -17,33 +17,50 @@ export interface GatherCredentials {
   accessTokenExpiresAt?: number;
 }
 
-/** Read credentials from .auth: line 1 = refresh token, line 2 = space ID (optional). */
+interface AuthFileData {
+  refreshToken?: string;
+  spaceId?: string;
+}
+
+function ensureAuthFileExists(): void {
+  if (!fs.existsSync(AUTH_DIR)) {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(AUTH_FILE)) {
+    fs.writeFileSync(AUTH_FILE, "{}\n", "utf-8");
+  }
+}
+
+/** Read credentials from auth.json. */
 export function loadCredentials(): GatherCredentials | null {
   try {
+    ensureAuthFileExists();
     const raw = fs.readFileSync(AUTH_FILE, "utf-8");
-    const lines = raw.split(/\r?\n/).map((s) => s.trim());
-    const refreshToken = lines[0];
+    const parsed = JSON.parse(raw) as AuthFileData;
+    const refreshToken = typeof parsed.refreshToken === "string" ? parsed.refreshToken : "";
     if (!refreshToken) return null;
-    const spaceId = lines[1] || undefined;
+    const spaceId = typeof parsed.spaceId === "string" && parsed.spaceId ? parsed.spaceId : undefined;
     return { refreshToken, ...(spaceId ? { spaceId } : {}) };
   } catch {
     return null;
   }
 }
 
-/** Write refresh token to .auth (line 1). If spaceId is provided, writes it as line 2. */
+/** Write refresh token to auth.json. If spaceId is provided, writes it too. */
 export function writeRefreshToken(refreshToken: string, spaceId?: string): void {
-  const content = spaceId ? `${refreshToken}\n${spaceId}\n` : `${refreshToken}\n`;
-  fs.writeFileSync(AUTH_FILE, content, "utf-8");
+  ensureAuthFileExists();
+  const data: AuthFileData = { refreshToken, ...(spaceId ? { spaceId } : {}) };
+  fs.writeFileSync(AUTH_FILE, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
 }
 
-/** Append or update space ID (line 2) in .auth. Preserves existing line 1. */
+/** Append or update spaceId in auth.json. Preserves refreshToken. */
 export function writeSpaceId(spaceId: string): void {
   const creds = loadCredentials();
   if (!creds?.refreshToken) {
-    throw new Error("No refresh token in .auth; run yarn start login first");
+    throw new Error("No refresh token in auth file; run yarn start login first");
   }
-  fs.writeFileSync(AUTH_FILE, `${creds.refreshToken}\n${spaceId}\n`, "utf-8");
+  const data: AuthFileData = { refreshToken: creds.refreshToken, spaceId };
+  fs.writeFileSync(AUTH_FILE, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
 }
 
 /** Refresh the id_token (JWT) using Firebase securetoken. Gather v2 uses Firebase Auth (issuer securetoken.google.com/gather-town-v2). */
@@ -118,7 +135,7 @@ During login you can paste your Gather space URL (from the address bar when in a
 the CLI will remember it so you can run  yarn start music  or  yarn start dance  without arguments.
 `;
 
-/** Ensures we have credentials; fetches authUserId and spaceUserId from the API. Uses spaceId from .auth or CLI arg. */
+/** Ensures we have credentials; fetches authUserId and spaceUserId from the API. Uses spaceId from auth file or CLI arg. */
 export async function ensureLoggedIn(spaceIdFromArg?: string): Promise<GatherCredentials> {
   const creds = loadCredentials();
   if (!creds?.refreshToken) {
@@ -128,7 +145,7 @@ export async function ensureLoggedIn(spaceIdFromArg?: string): Promise<GatherCre
   const spaceId = spaceIdFromArg ?? creds.spaceId;
   if (!spaceId) {
     console.error(
-      "Space ID not set. Run  yarn start login  and paste your Gather space URL when prompted, or add the space ID as the second line of .auth"
+      "Space ID not set. Run  yarn start login  and paste your Gather space URL when prompted, or add a spaceId value in ~/.config/gather/auth.json"
     );
     process.exit(1);
   }

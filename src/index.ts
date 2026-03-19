@@ -1,7 +1,4 @@
-/**
- * Gather CLI – subcommands: music, dance, spin, login.
- * Run: yarn start <command> [options]
- */
+#! /usr/bin/env node
 import { runMusic } from "./commands/music.js";
 import { runDance } from "./commands/dance.js";
 import { runSpin } from "./commands/spin.js";
@@ -26,6 +23,11 @@ async function main(): Promise<void> {
       await runSpin();
       break;
     case "login":
+      if (!spaceIdArg?.trim()) {
+        console.error("Missing required argument: spaceId or Gather space URL");
+        console.error(`Usage: ${process.argv[0]} login <spaceId-or-spaceUrl>`);
+        process.exit(1);
+      }
       await runLogin(spaceIdArg);
       break;
     default:
@@ -37,14 +39,13 @@ Commands:
   music             Update Gather custom status from Apple Music (every 5s)
   dance             Move randomly and show party emoji
   spin              Spin in place (faceDirection + 🌀 emote)
-  login [spaceId]   Interactive Google OAuth login (opens browser); optional space ID or space URL saved to .auth
+  login <spaceId>   Interactive Google OAuth login (opens browser); required space ID or space URL saved to ~/.config/gather/auth.json
 
 Examples:
-  yarn start music
-  yarn start dance
-  yarn start spin
-  yarn start login
-  yarn start login <spaceId-or-spaceUrl>   save space to .auth for music/dance
+  ${process.argv[0]} music
+  ${process.argv[0]} dance
+  ${process.argv[0]} spin
+  ${process.argv[0]} login <spaceId-or-spaceUrl>
 `);
         process.exit(0);
       }

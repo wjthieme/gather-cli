@@ -4,7 +4,7 @@
  * is redirected to Gather's URL. User pastes that URL here so we can extract the
  * id_token and exchange it for a Firebase refresh token.
  *
- * Usage: yarn start login [spaceId-or-spaceUrl]
+ * Usage: yarn start login <spaceId-or-spaceUrl>
  */
 import { exec } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -17,13 +17,18 @@ import {
   GOOGLE_OAUTH_SCOPE,
   parseSpaceIdFromGatherUrl,
 } from "../utility/config.js";
-import { writeRefreshToken, writeSpaceId } from "../utility/auth.js";
+import { writeRefreshToken } from "../utility/auth.js";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
-export async function runLogin(spaceIdOrUrl?: string): Promise<void> {
+export async function runLogin(spaceIdOrUrl: string): Promise<void> {
   if (!GOOGLE_OAUTH_CLIENT_ID) {
     console.error("Google OAuth client ID not configured.");
+    process.exit(1);
+  }
+  const spaceId = parseSpaceIdFromGatherUrl(spaceIdOrUrl.trim());
+  if (!spaceId) {
+    console.error("Invalid space argument. Pass a Gather space URL or UUID space ID.");
     process.exit(1);
   }
 
@@ -42,16 +47,8 @@ export async function runLogin(spaceIdOrUrl?: string): Promise<void> {
 
   const idToken = await promptRedirectUrl();
   const refreshToken = await exchangeIdTokenForRefreshToken(idToken);
-  writeRefreshToken(refreshToken);
-  console.log("Refresh token saved to .auth");
-
-  if (spaceIdOrUrl?.trim()) {
-    const spaceId = parseSpaceIdFromGatherUrl(spaceIdOrUrl.trim());
-    if (spaceId) {
-      writeSpaceId(spaceId);
-      console.log("Space ID saved to .auth (second line).");
-    }
-  }
+  writeRefreshToken(refreshToken, spaceId);
+  console.log("Credentials saved to ~/.config/gather/auth.json");
 }
 
 function promptRedirectUrl(): Promise<string> {
