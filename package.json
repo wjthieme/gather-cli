@@ -26,7 +26,11 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "@capaj/naudiodon": "^2.4.0",
     "@msgpack/msgpack": "^3.0.0",
+    "@roamhq/wrtc": "^0.10.0",
+    "mediasoup-client": "^3.18.7",
+    "socket.io-client": "^4.8.3",
     "ws": "^8.18.0"
   }
 }

@@ -12,6 +12,44 @@ export function parseSpaceIdFromGatherUrl(urlOrPath: string): string | null {
   return match ? match[0]! : null;
 }
 
+/**
+ * Guest `/join` URL shape used by dj (query keys not verified in guest.har — that capture has no such strings).
+ */
+export function buildGuestJoinUrl(spaceId: string, copierId: string): string {
+  const u = new URL(`${GATHER_APP_ORIGIN}/app/${spaceId}/join`);
+  u.searchParams.set("guest", "true");
+  u.searchParams.set("copysource", "inviteTeamModal");
+  u.searchParams.set("copierid", copierId);
+  return u.toString();
+}
+
+/**
+ * Parse a Gather v2 guest invite URL, e.g.
+ * https://app.v2.gather.town/app/<spaceId>/join?guest=true&copierid=…
+ * `copierid` may be a space user UUID (browser invites) or a Firebase uid (CLI-derived invites).
+ */
+export function parseGuestJoinUrl(raw: string): { spaceId: string; copierSpaceUserId: string } | null {
+  const trimmed = raw.trim();
+  try {
+    const u = new URL(trimmed);
+    if (!u.hostname.endsWith("gather.town")) return null;
+    const m = u.pathname.match(/\/app\/([a-f0-9-]{36})\/join/i);
+    if (!m) return null;
+    const spaceId = m[1]!;
+    const copier =
+      u.searchParams.get("copierid") ??
+      u.searchParams.get("copierId") ??
+      u.searchParams.get("copier_id");
+    if (!copier?.trim()) return null;
+    return { spaceId, copierSpaceUserId: copier.trim() };
+  } catch {
+    return null;
+  }
+}
+
+/** Web app origin (HAR / CORS). */
+export const GATHER_APP_ORIGIN = "https://app.v2.gather.town";
+
 /** Gather v2 REST API base (reverse‑engineered from HAR). No endpoint in HAR returns the user's space_id; it only appears in request paths. */
 export const GATHER_API_BASE = "https://api.v2.gather.town/api/v2";
 

@@ -11,6 +11,11 @@ export interface GatherCredentials {
   authUserId?: string;
   /** Fetched from API (in-memory only) */
   spaceUserId?: string;
+  /**
+   * From `GET /users/me?spaceId=…` when present: Gather **Firebase custom token** (exchange via Identity Toolkit
+   * `accounts:signInWithCustomToken` → new `id_token` with `gather.*`; guest2.har). Not sent to router.v2 as `auth.token`.
+   */
+  gatherSpaceSessionToken?: string;
   /** Cached JWT (in-memory only) */
   accessToken?: string;
   /** Expiry time for accessToken (in-memory only) */
@@ -40,7 +45,10 @@ export function loadCredentials(): GatherCredentials | null {
     const refreshToken = typeof parsed.refreshToken === "string" ? parsed.refreshToken : "";
     if (!refreshToken) return null;
     const spaceId = typeof parsed.spaceId === "string" && parsed.spaceId ? parsed.spaceId : undefined;
-    return { refreshToken, ...(spaceId ? { spaceId } : {}) };
+    return {
+      refreshToken,
+      ...(spaceId ? { spaceId } : {}),
+    };
   } catch {
     return null;
   }
@@ -49,7 +57,10 @@ export function loadCredentials(): GatherCredentials | null {
 /** Write refresh token to auth.json. If spaceId is provided, writes it too. */
 export function writeRefreshToken(refreshToken: string, spaceId?: string): void {
   ensureAuthFileExists();
-  const data: AuthFileData = { refreshToken, ...(spaceId ? { spaceId } : {}) };
+  const data: AuthFileData = {
+    refreshToken,
+    ...(spaceId ? { spaceId } : {}),
+  };
   fs.writeFileSync(AUTH_FILE, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
 }
 
@@ -59,8 +70,44 @@ export function writeSpaceId(spaceId: string): void {
   if (!creds?.refreshToken) {
     throw new Error("No refresh token in auth file; run yarn start login first");
   }
-  const data: AuthFileData = { refreshToken: creds.refreshToken, spaceId };
+  const data: AuthFileData = {
+    refreshToken: creds.refreshToken,
+    spaceId,
+  };
   fs.writeFileSync(AUTH_FILE, `${JSON.stringify(data, null, 2)}\n`, "utf-8");
+}
+
+/**
+ * guest2.har: after first `GET /users/me` with the anonymous `id_token`, the client POSTs Gather's `token` field here.
+ * That returns a **new** `id_token` + `refresh_token` where the JWT includes `gather.userAccountId` (custom sign-in).
+ * Securetoken **refresh** alone does not add those claims — it only reissues for the current sign-in provider.
+ */
+export async function signInWithGatherCustomToken(creds: GatherCredentials, customToken: string): Promise<void> {
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${encodeURIComponent(
+    FIREBASE_API_KEY
+  )}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: customToken, returnSecureToken: true }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Firebase signInWithCustomToken failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as {
+    idToken?: string;
+    refreshToken?: string;
+    expiresIn?: string;
+  };
+  if (!data.idToken || !data.refreshToken) {
+    throw new Error("Firebase signInWithCustomToken response missing idToken or refreshToken");
+  }
+  creds.accessToken = data.idToken;
+  creds.refreshToken = data.refreshToken;
+  const expiresIn = Number(data.expiresIn);
+  creds.accessTokenExpiresAt = Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000;
+  debug("auth: signInWithCustomToken (Gather users/me.token → id_token with gather claims)");
 }
 
 /** Refresh the id_token (JWT) using Firebase securetoken. Gather v2 uses Firebase Auth (issuer securetoken.google.com/gather-town-v2). */
@@ -128,6 +175,67 @@ export async function getValidJwt(creds: GatherCredentials): Promise<string> {
   return refreshBearerToken(creds);
 }
 
+function getFirebaseUidFromIdToken(idToken: string): string | null {
+  try {
+    const payload = JSON.parse(
+      Buffer.from(idToken.split(".")[1] ?? "", "base64url").toString("utf8")
+    ) as { sub?: string; user_id?: string };
+    const uid = payload.user_id ?? payload.sub;
+    return typeof uid === "string" && uid.trim() ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Firebase anonymous session for a Gather **guest** (not written to auth.json).
+ * guest.har shows `GET users/me` with `userAccount.email: null` for this pattern.
+ */
+export async function createAnonymousGuestSession(spaceId: string): Promise<GatherCredentials> {
+  const url = `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(
+    FIREBASE_API_KEY
+  )}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ returnSecureToken: true }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Firebase anonymous signUp (guest) failed (${res.status}): ${text}`);
+  }
+  const data = (await res.json()) as {
+    idToken?: string;
+    refreshToken?: string;
+    expiresIn?: string;
+  };
+  if (!data.idToken || !data.refreshToken) {
+    throw new Error("Firebase anonymous signUp response missing idToken or refreshToken");
+  }
+  const jwtUid = getFirebaseUidFromIdToken(data.idToken);
+  const meBoot = await fetchMe(data.idToken, spaceId);
+  const { authUserId } = meBoot;
+  if (jwtUid && jwtUid !== authUserId) {
+    debug("auth: guest JWT sub/user_id ≠ users/me firebaseAuthId; using API for WS + Connection match", {
+      jwtUid,
+      authUserId,
+    });
+  }
+  const expiresIn = Number(data.expiresIn);
+  const creds: GatherCredentials = {
+    refreshToken: data.refreshToken,
+    spaceId,
+    authUserId,
+    accessToken: data.idToken,
+    accessTokenExpiresAt: Date.now() + (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000,
+    ...(meBoot.spaceToken ? { gatherSpaceSessionToken: meBoot.spaceToken } : {}),
+  };
+  if (meBoot.spaceToken) {
+    await signInWithGatherCustomToken(creds, meBoot.spaceToken);
+  }
+  return creds;
+}
+
 const LOGIN_INSTRUCTIONS = `
 No refresh token found. Run:  yarn start login
 
@@ -152,7 +260,7 @@ export async function ensureLoggedIn(spaceIdFromArg?: string): Promise<GatherCre
   creds.spaceId = spaceId;
   const jwt = await getValidJwt(creds);
   if (!creds.authUserId) {
-    const { authUserId } = await fetchMe(jwt);
+    const { authUserId } = await fetchMe(jwt, creds.spaceId);
     creds.authUserId = authUserId;
     debug("auth: fetched authUserId from API");
   }

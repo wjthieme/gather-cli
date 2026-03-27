@@ -4,6 +4,7 @@ import { runDance } from "./commands/dance.js";
 import { runSpin } from "./commands/spin.js";
 import { runLogin } from "./commands/login.js";
 import { runLyrics } from "./commands/lyrics.js";
+import { runDj } from "./commands/dj.js";
 
 const subcommand = process.argv[2];
 
@@ -19,6 +20,9 @@ async function main(): Promise<void> {
       break;
     case "lyrics":
       await runLyrics();
+      break;
+    case "dj":
+      await runDj();
       break;
     case "dance":
       await runDance();
@@ -37,11 +41,12 @@ async function main(): Promise<void> {
     default:
       if (subcommand === "-h" || subcommand === "--help" || !subcommand) {
         console.log(`
-Usage: yarn start <command> [options]
+Usage: ${process.argv[0]} <command> [options]
 
 Commands:
   music             Update Gather custom status from Apple Music (every 5s)
   lyrics            Post timed lyric lines from Apple Music to nearby chat
+  dj                Stream audio as a guest (game WS guest flow; after host allows, waits for GuestPass Admitted then enterSpace + follow). Default guest name DJ (GATHER_GUEST_NAME)
   dance             Move randomly and show party emoji
   spin              Spin in place (faceDirection + 🌀 emote)
   login <spaceId>   Interactive Google OAuth login (opens browser); required space ID or space URL saved to ~/.config/gather/auth.json
@@ -49,6 +54,7 @@ Commands:
 Examples:
   ${process.argv[0]} music
   ${process.argv[0]} lyrics
+  ${process.argv[0]} dj
   ${process.argv[0]} dance
   ${process.argv[0]} spin
   ${process.argv[0]} login <spaceId-or-spaceUrl>
@@ -56,7 +62,7 @@ Examples:
         process.exit(0);
       }
       console.error("Unknown command:", subcommand);
-      console.error("Run 'yarn start --help' for usage.");
+      console.error(`Run '${process.argv[0]} --help' for usage.`);
       process.exit(1);
   }
 }

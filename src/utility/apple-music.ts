@@ -101,3 +101,26 @@ export function getNowPlayingWithPosition(): NowPlayingWithPosition | null {
     return null;
   }
 }
+
+/** Gather display names longer than this are truncated (server/UI limits vary). */
+const GATHER_DISPLAY_NAME_MAX_LEN = 96;
+
+export function truncateGatherDisplayName(name: string): string {
+  const t = name.trim();
+  if (t.length <= GATHER_DISPLAY_NAME_MAX_LEN) return t;
+  return t.slice(0, GATHER_DISPLAY_NAME_MAX_LEN);
+}
+
+/**
+ * **`"title - artist"`** for Gather UI (e.g. **`setCustomStatus`**), or **`title`** only when artist is empty.
+ * **`null`** when not playing, unavailable, or not macOS (uses **`getNowPlaying()`** / same AppleScript as other helpers).
+ */
+export function getAppleMusicNowPlayingDisplayName(): string | null {
+  if (process.platform !== "darwin") return null;
+  const np = getNowPlaying();
+  if (!np) return null;
+  const title = np.title.trim();
+  if (!title) return null;
+  const artist = np.artist.trim();
+  return artist ? `${title} - ${artist}` : title;
+}
