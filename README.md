@@ -1,13 +1,25 @@
 # gather-cli
 
-A small CLI for experimenting with the **Gather v2** (reverse‑engineered) API.
+> **Disclaimer — read this first**  
+> This project is **vibe coded** (experimental, reverse‑engineered against Gather’s non‑public APIs, lightly tested, and maintained informally). **Nothing here is endorsed by Gather.** It may break at any time, leak or mishandle tokens, violate terms of service, or behave in ways you do not expect. **Use is entirely at your own risk.** Do not use it for anything safety‑critical or where misuse could harm you or others.
 
-Includes:
-- **`login`**: interactive Google OAuth login (opens a browser) and stores a Firebase refresh token locally
-- **`music`**: updates your Gather custom status from **Apple Music** now playing (every 5s)
-- **`lyrics`**: posts the current lyric line to Gather nearby chat, timed to current song position
-- **`dance`**: random walk + 🎉 emote loop
-- **`spin`**: rotate (faceDirection) + 🌀 emote loop
+A small CLI for experimenting with the **Gather v2** API surface the authors inferred from traffic and behavior.
+
+## Commands
+
+| Command | Description |
+|--------|-------------|
+| **`login <spaceId-or-spaceUrl>`** | Interactive Google OAuth (opens a browser). Saves credentials under `~/.config/gather/auth.json`. |
+| **`music`** | Updates your Gather custom status from **Apple Music** now playing (polls every 5s). **macOS** (AppleScript). |
+| **`lyrics`** | Posts timed lyric lines from Apple Music to **nearby chat**, aligned to playback position. **macOS**. |
+| **`dj`** | Guest flow: stream **system audio** (e.g. BlackHole) into Gather voice after the host admits the guest. See env vars below. **macOS**-oriented. |
+| **`dance`** | Random walk + party emoji loop. |
+| **`spin`** | Spin in place (`faceDirection` + emoji loop). |
+
+### `dj` environment variables (optional)
+
+- **`GATHER_GUEST_NAME`** — display name for the guest (default `DJ`).
+- **`DJ_PORTAUDIO_BUFFER_MULTIPLIER`** — integer `1`–`8` for PortAudio buffer sizing (default `8`).
 
 ## Install
 
@@ -21,10 +33,10 @@ yarn install
 yarn start --help
 ```
 
-Login first (stores credentials in `.auth`):
+Log in first (writes **`~/.config/gather/auth.json`**):
 
 ```bash
-yarn start login <space-id>
+yarn start login <space-id-or-gather-space-url>
 ```
 
 Then run any command:
@@ -32,34 +44,33 @@ Then run any command:
 ```bash
 yarn start music
 yarn start lyrics
+yarn start dj
 yarn start dance
 yarn start spin
 ```
 
-## Credentials (`.auth`)
+## Credentials (`~/.config/gather/auth.json`)
 
-This project stores auth in a plain-text file at **`.auth`** (in your current working directory):
+Auth is stored as **JSON** (not a two-line `.auth` file):
 
-- **line 1**: Firebase **refresh token**
-- **line 2**: Gather **spaceId** (UUID)
+- **`refreshToken`** (string) — Firebase refresh token from the login flow.
+- **`spaceId`** (string, optional) — Gather space UUID; set at login or updated when you target a space.
 
-If you want to switch spaces later, re-run `yarn start login <spaceUrl>` or edit line 2.
+`authUserId`, `spaceUserId`, and JWTs are **not** persisted; they are resolved at runtime from the API and WebSocket. To switch spaces, run `login` again with the new space URL/ID or edit `spaceId` in the JSON (you must still have a valid `refreshToken`).
 
 ## Notes / requirements
 
-- This uses a **non-public / reverse‑engineered** Gather API. **There is no guarantee this CLI will keep working**. Gather may change the API at any time.
-- **Apple Music integration** (`music`) uses AppleScript (`osascript`), so it’s intended for **macOS**.
-- The CLI uses Gather v2’s Firebase-backed auth and refreshes JWTs via Google’s securetoken endpoint.
+- Gather’s v2 API is **not a stable public contract**. **There is no guarantee this CLI will keep working.**
+- **Apple Music** features (`music`, `lyrics`, and status display in `dj`) use AppleScript — **macOS** only.
+- Auth uses Gather v2’s Firebase-backed flow (Google OAuth → refresh token; JWT refresh via Google securetoken and related Identity Toolkit calls as implemented in code).
 
 ## Debugging
-
-Run with debug logging to inspect token refresh, WebSocket connect/auth/subscription, and server messages:
 
 ```bash
 yarn dev <command>
 ```
 
-Dry-run mode (prints commands but does not send any WebSocket messages):
+Dry-run (prints WebSocket send intentions; does not send game actions):
 
 ```bash
 DRY=1 yarn start lyrics
@@ -71,4 +82,4 @@ DRY=1 yarn start lyrics
 yarn build
 ```
 
-This outputs `dist/` and exposes the `gather` binary via `package.json`’s `bin` field.
+Outputs `dist/` and exposes the `gather` binary via `package.json`’s `bin` field.
